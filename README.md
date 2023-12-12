@@ -13,4 +13,4 @@ WIFI-MQTT文件夹下存放STM32程序，其中云平台为OneNET物联网开放
 
 WIFI-oldMQTT文件夹下存放STM32程序，其中云平台为OneNET多协议接入，且为MQTT协议（旧版）；实现了STM32、OneNET云平台、微信小程序之间的两两双向交互。
 
-此系统的WIFI模组连接OneNET的部分C语言代码，及微信小程序连接OneNET的部分JavaScript代码，参考了bilibili的UP彼岸有光我们有船的开源项目，在此表示感谢
+此系统的WIFI模组连接OneNET的部分C语言代码，及微信小程序连接OneNET的部分JavaScript代码，参考了bilibili的UP主“彼岸有光我们有船”的开源项目，在此表示感谢
