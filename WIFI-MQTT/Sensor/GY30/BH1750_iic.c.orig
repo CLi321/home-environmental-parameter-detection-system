@@ -1,0 +1,260 @@
+
+#include "BH1750_iic.h"
+#include "delay.h"
+
+
+/*
+brief BH1570初始化函数
+param mode 设置读的模式 
+           连续读(BHModeH1/BHModeH2/BHModeL)  单次读（BHSigModeH/BHSigModeH2/BHSigModeL）
+return None
+**/
+void BH1570_Init(u8 mode)
+{
+	
+	IIC_Init();
+	GPIO_SetBits(GPIOB,GPIO_Pin_3|GPIO_Pin_4);				 //PA4 输出高
+	BhSendCommand(BHPowOn);    //发送启动命令
+	BhSendCommand(BHReset);    //清除寄存器内容
+	BhSendCommand(mode);   //设置高精度为模式2
+	delay_ms(180);            //设置完成后要有一段延迟，手册上说最大180ms就可以了
+}
+
+/*
+brief 检查BH1570是否存在
+param None
+return 存在返回0，否者返回1
+**/
+u8 CheckBh()
+{
+	u8 ack=1;;
+	IIC_Start();
+	IIC_Send_Byte(BHAddr);
+	ack=IIC_Wait_Ack();
+	IIC_Stop(); 
+	return ack;
+}
+
+/*
+brief BH1570发送命令
+param command 需要发送的命令
+return 存在返回0，否者返回1
+**/
+void BhSendCommand(u8 command)
+{
+    IIC_Start();                    //iic起始信号
+    IIC_Send_Byte(BHAddWrite);      //发送器件地址
+    IIC_Wait_Ack();           		//等待从机应答
+	
+    IIC_Send_Byte(command);         //发送指令
+    IIC_Wait_Ack();                 //等待从机应答
+    IIC_Stop();                     //iic停止信号
+}
+
+/*
+brief BH1570读光照强度原始数据
+param None
+return 读出的光照数据
+**/
+u16 BhReadData(void)
+{
+	u16 buf;
+	IIC_Start();                       //iic起始信号
+	IIC_Send_Byte(BHAddRead);          //发送器件地址+读标志位
+	IIC_Wait_Ack();                    //等待从机应答
+	buf=IIC_Read_Byte(1);              //读取数据
+	buf=buf<<8;                        //读取并保存高八位数据
+	buf+=IIC_Read_Byte(0);             //读取并保存第八位数据
+	IIC_Stop();                        //发送停止信号 
+	return buf; 
+}
+
+
+/*
+brief BH1570连续读光照强度原始数据
+param mode单次读的模式
+return 读出的光照数据
+注意：需要根据设置的读模式来延时获取数据
+**/
+u16 BhRead()
+{
+	u16 LightIntensity=0;
+	LightIntensity=BhReadData();
+	LightIntensity=(int)(LightIntensity/1.2+0.5);
+	return LightIntensity;
+}
+
+/*
+brief BH1570单次读光照强度原始数据
+param mode单次读的模式
+return 读出的光照数据
+注意：需要根据设置的读模式来延时获取数据
+**/
+u16 BhSigRead(u8 mode)
+{
+	u16 LightIntensity=0;
+	BhSendCommand(mode);
+	LightIntensity=BhReadData();
+	LightIntensity=(int)(LightIntensity/1.2+0.5);
+	return LightIntensity;
+}
+
+
+
+
+
+
+
+
+
+/***************************************************************************************************************/
+
+
+//初始化IIC
+void IIC_Init(void)
+{					     
+	GPIO_InitTypeDef GPIO_InitStructure;
+	RCC_APB2PeriphClockCmd(	RCC_APB2Periph_GPIOB, ENABLE );	//使能GPIOB时钟
+	   
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3|GPIO_Pin_4;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP ;   //推挽输出
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	GPIO_SetBits(GPIOB,GPIO_Pin_3|GPIO_Pin_4); 	//PB6,PB7 输出高
+}
+//产生IIC起始信号
+void IIC_Start(void)
+{
+	SDA_OUT();     //sda线输出
+	IIC_SDA=1;	  	  
+	IIC_SCL=1;
+	delay_us(4);
+ 	IIC_SDA=0;//START:when CLK is high,DATA change form high to low 
+	delay_us(4);
+	IIC_SCL=0;//钳住I2C总线，准备发送或接收数据 
+}	  
+//产生IIC停止信号
+void IIC_Stop(void)
+{
+	SDA_OUT();//sda线输出
+	IIC_SCL=0;
+	IIC_SDA=0;//STOP:when CLK is high DATA change form low to high
+ 	delay_us(4);
+	IIC_SCL=1; 
+	IIC_SDA=1;//发送I2C总线结束信号
+	delay_us(4);							   	
+}
+//等待应答信号到来
+//返回值：1，接收应答失败
+//        0，接收应答成功
+u8 IIC_Wait_Ack(void)
+{
+	u8 ucErrTime=0;
+	SDA_IN();      //SDA设置为输入  
+	IIC_SDA=1;delay_us(1);	   
+	IIC_SCL=1;delay_us(1);	 
+	while(READ_SDA)
+	{
+		ucErrTime++;
+		if(ucErrTime>250)
+		{
+			IIC_Stop();
+			return 1;
+		}
+	}
+	IIC_SCL=0;//时钟输出0 	   
+	return 0;  
+} 
+//产生ACK应答
+void IIC_Ack(void)
+{
+	IIC_SCL=0;
+	SDA_OUT();
+	IIC_SDA=0;
+	delay_us(2);
+	IIC_SCL=1;
+	delay_us(2);
+	IIC_SCL=0;
+}
+//不产生ACK应答		    
+void IIC_NAck(void)
+{
+	IIC_SCL=0;
+	SDA_OUT();
+	IIC_SDA=1;
+	delay_us(2);
+	IIC_SCL=1;
+	delay_us(2);
+	IIC_SCL=0;
+}					 				     
+//IIC发送一个字节
+//返回从机有无应答
+//1，有应答
+//0，无应答			  
+void IIC_Send_Byte(u8 txd)
+{                        
+    u8 t;   
+	SDA_OUT(); 	    
+    IIC_SCL=0;//拉低时钟开始数据传输
+    for(t=0;t<8;t++)
+    {              
+        //IIC_SDA=(txd&0x80)>>7;
+		if((txd&0x80)>>7)
+			IIC_SDA=1;
+		else
+			IIC_SDA=0;
+		txd<<=1; 	  
+		delay_us(2);   //对TEA5767这三个延时都是必须的
+		IIC_SCL=1;
+		delay_us(2); 
+		IIC_SCL=0;	
+		delay_us(2);
+    }	 
+} 	    
+//读1个字节，ack=1时，发送ACK，ack=0，发送nACK   
+u8 IIC_Read_Byte(unsigned char ack)
+{
+	unsigned char i,receive=0;
+	SDA_IN();//SDA设置为输入
+    for(i=0;i<8;i++ )
+	{
+        IIC_SCL=0; 
+        delay_us(2);
+		IIC_SCL=1;
+        receive<<=1;
+        if(READ_SDA)receive++;   
+		delay_us(1); 
+    }					 
+    if (!ack)
+        IIC_NAck();//发送nACK
+    else
+        IIC_Ack(); //发送ACK   
+    return receive;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
